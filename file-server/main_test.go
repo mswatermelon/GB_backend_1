@@ -2,6 +2,7 @@ package main_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	. "github.com/mswatermelon/GB_backend_1/file-server"
 	"github.com/mswatermelon/GB_backend_1/file-server/upload"
@@ -11,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -18,7 +20,7 @@ import (
 func TestGetHandler(t *testing.T) {
 	// Создаем запрос с указанием нашего хендлера. Так как мы тестируем GET-эндпоинт
 	// то нам не нужно передавать тело, поэтому третьим аргументом передаем nil
-	req, err := http.NewRequest("GET", "/?name=John", nil)
+	req, err := http.NewRequest(http.MethodGet, "/?name=John", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,5 +85,76 @@ func TestUploadHandler(t *testing.T) {
 	if !strings.Contains(rr.Body.String(), expected) {
 		t.Errorf("handler returned unexpected body: got %v want %v",
 			rr.Body.String(), expected)
+	}
+}
+
+func test(m interface{}) bool {
+	rt := reflect.TypeOf(m)
+
+	switch rt.Kind() {
+	case reflect.Slice:
+		return true
+	case reflect.Array:
+		return true
+	default:
+		return false
+	}
+}
+
+func TestFileHandler(t *testing.T) {
+	req, _ := http.NewRequest(http.MethodGet, "/upload", nil)
+	rr := httptest.NewRecorder()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, "ok!")
+	}))
+	defer ts.Close()
+	fileHandler := &upload.FileServeHandler{
+		Dir: "upload",
+	}
+	fileHandler.ServeHTTP(rr, req)
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("handler returned wrong status code: got %v want %v",
+			status, http.StatusOK)
+	}
+	var target []upload.FileInfo
+	err := json.NewDecoder(rr.Body).Decode(&target)
+	if err != nil {
+		t.Errorf("Unable to parse the answer")
+	}
+	if !test(target) {
+		t.Errorf("handler returned unexpected body: got %v want %v",
+			rr.Body.String(), target)
+	}
+}
+
+func TestFileHandlerWithFilter(t *testing.T) {
+	req, _ := http.NewRequest(http.MethodGet, "/upload?ext=.json", nil)
+	rr := httptest.NewRecorder()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, "ok!")
+	}))
+	defer ts.Close()
+	fileHandler := &upload.FileServeHandler{
+		Dir: "upload",
+	}
+	fileHandler.ServeHTTP(rr, req)
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("handler returned wrong status code: got %v want %v",
+			status, http.StatusOK)
+	}
+	m := rr.Body.String()
+	println(m)
+	var target []upload.FileInfo
+	err := json.NewDecoder(rr.Body).Decode(&target)
+	switch {
+	case err == io.EOF:
+		// empty body
+	case err != nil:
+		t.Errorf(fmt.Errorf("Unable to parse the answer: %w", err).Error())
+		return
+	}
+	if !test(target) {
+		t.Errorf("handler returned unexpected body: got %v want %v",
+			rr.Body.String(), target)
 	}
 }

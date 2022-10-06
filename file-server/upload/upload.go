@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	url2 "net/url"
 	"path/filepath"
 	"time"
 )
@@ -68,13 +67,13 @@ type FileInfo struct {
 }
 
 type FileServeHandler struct {
-	dir string
+	Dir string
 }
 
 func (h *FileServeHandler) addFileInfo(fileInfo []FileInfo, file fs.FileInfo) []FileInfo {
 	fileInfo = append(fileInfo, FileInfo{
 		Name:      file.Name(),
-		Extension: filepath.Ext(h.dir + "/" + file.Name()),
+		Extension: filepath.Ext(h.Dir + "/" + file.Name()),
 		Size:      file.Size(),
 	})
 
@@ -82,32 +81,25 @@ func (h *FileServeHandler) addFileInfo(fileInfo []FileInfo, file fs.FileInfo) []
 }
 
 func (h *FileServeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	files, err := ioutil.ReadDir(h.dir)
+	files, err := ioutil.ReadDir(h.Dir)
 	if err != nil {
 		log.Println(err)
 		http.Error(w, "Can not open file's directory", http.StatusInternalServerError)
 		return
 	}
-
-	url, err := url2.Parse(r.RequestURI)
-	if err != nil {
-		log.Println(err)
-		http.Error(w, "Unable to parse the URL", http.StatusInternalServerError)
-		return
-	}
-	values := url.Query()
+	values := r.URL.Query()
 	extention := values.Get("ext")
 
-	fileInfo := make([]FileInfo, len(files))
+	fileInfo := make([]FileInfo, 0)
 	for _, file := range files {
-		fileExt := filepath.Ext(h.dir + "/" + file.Name())
 		if len(extention) != 0 {
+			fileExt := filepath.Ext(h.Dir + "/" + file.Name())
 			if extention == fileExt {
 				fileInfo = h.addFileInfo(fileInfo, file)
 			}
-			return
+		} else {
+			fileInfo = h.addFileInfo(fileInfo, file)
 		}
-		fileInfo = h.addFileInfo(fileInfo, file)
 	}
 	jsonResp, err := json.Marshal(fileInfo)
 	if err != nil {
@@ -127,7 +119,7 @@ func main() {
 		UploadDir: "upload",
 	}
 	fileServeHandler := &FileServeHandler{
-		dir: "upload",
+		Dir: "upload",
 	}
 	http.Handle("/upload", uploadHandler)
 	http.Handle("/files", fileServeHandler)
