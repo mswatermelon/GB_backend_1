@@ -3,9 +3,11 @@ package upload
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"io/ioutil"
 	"log"
 	"net/http"
+	url2 "net/url"
 	"path/filepath"
 	"time"
 )
@@ -69,6 +71,16 @@ type FileServeHandler struct {
 	dir string
 }
 
+func (h *FileServeHandler) addFileInfo(fileInfo []FileInfo, file fs.FileInfo) []FileInfo {
+	fileInfo = append(fileInfo, FileInfo{
+		Name:      file.Name(),
+		Extension: filepath.Ext(h.dir + "/" + file.Name()),
+		Size:      file.Size(),
+	})
+
+	return fileInfo
+}
+
 func (h *FileServeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	files, err := ioutil.ReadDir(h.dir)
 	if err != nil {
@@ -77,13 +89,25 @@ func (h *FileServeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	url, err := url2.Parse(r.RequestURI)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, "Unable to parse the URL", http.StatusInternalServerError)
+		return
+	}
+	values := url.Query()
+	extention := values.Get("ext")
+
 	fileInfo := make([]FileInfo, len(files))
 	for _, file := range files {
-		fileInfo = append(fileInfo, FileInfo{
-			Name:      file.Name(),
-			Extension: filepath.Ext(h.dir + "/" + file.Name()),
-			Size:      file.Size(),
-		})
+		fileExt := filepath.Ext(h.dir + "/" + file.Name())
+		if len(extention) != 0 {
+			if extention == fileExt {
+				fileInfo = h.addFileInfo(fileInfo, file)
+			}
+			return
+		}
+		fileInfo = h.addFileInfo(fileInfo, file)
 	}
 	jsonResp, err := json.Marshal(fileInfo)
 	if err != nil {
